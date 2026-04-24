@@ -1,0 +1,95 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  creationTimestamp: '2026-04-24T16:37:00Z'
+  generation: 2
+  managedFields:
+    - apiVersion: tekton.dev/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          .: {}
+          'f:params': {}
+          'f:tasks': {}
+          'f:workspaces': {}
+      manager: Mozilla
+      operation: Update
+      time: '2026-04-24T16:50:28Z'
+  name: output
+  namespace: sn-labs-pedrokondo
+  resourceVersion: '2772258816'
+  uid: 916f931e-ac31-4d35-80d9-008faccb2fc4
+spec:
+  params:
+    - description: URL do repositório Git
+      name: repo-url
+      type: string
+    - description: Nome da imagem a ser gerada
+      name: build-image
+      type: string
+    - description: Nome da aplicação para o deployment
+      name: app-name
+      type: string
+  tasks:
+    - name: cleanup
+      taskRef:
+        kind: Task
+        name: cleanup
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: git-clone
+      params:
+        - name: url
+          value: $(params.repo-url)
+      runAfter:
+        - cleanup
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: pipeline-workspace
+    - name: eslint
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: eslint
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: jest-tests
+      runAfter:
+        - eslint
+      taskRef:
+        kind: Task
+        name: jest-test
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: buildah
+      params:
+        - name: IMAGE
+          value: $(params.build-image)
+      runAfter:
+        - jest-tests
+      taskRef:
+        kind: Task
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+    - name: deploy
+      params:
+        - name: SCRIPT
+          value: |
+            oc create deployment $(params.app-name) --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f -
+      runAfter:
+        - buildah
+      taskRef:
+        kind: Task
+        name: openshift-client
+  workspaces:
+    - description: Workspace compartilhado para o código e artefatos
+      name: pipeline-workspace
